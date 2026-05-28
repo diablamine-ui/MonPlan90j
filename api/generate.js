@@ -1,3 +1,11 @@
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -8,25 +16,12 @@ export default async function handler(req, res) {
   const API_KEY = process.env.GROQ_API_KEY;
   if (!API_KEY) return res.status(500).json({ error: 'Clé API non configurée' });
 
-  // Parse body manually - Vercel needs this
-  let body = {};
-  try {
-    if (typeof req.body === 'string') {
-      body = JSON.parse(req.body);
-    } else if (req.body && typeof req.body === 'object') {
-      body = req.body;
-    } else {
-      // Read raw body
-      const chunks = [];
-      for await (const chunk of req) chunks.push(chunk);
-      body = JSON.parse(Buffer.concat(chunks).toString());
-    }
-  } catch (e) {
-    return res.status(400).json({ error: 'Corps de requête invalide' });
-  }
+  const body = req.body || {};
+  const prompt = body.prompt || body.Prompt || '';
+  const maxTokens = body.maxTokens || 2000;
+  const type = body.type || 'plan';
 
-  const { prompt, maxTokens = 2000, type = 'plan' } = body;
-  if (!prompt) return res.status(400).json({ error: 'Prompt manquant' });
+  if (!prompt) return res.status(400).json({ error: 'Prompt manquant', body: JSON.stringify(body).slice(0,100) });
 
   const isJSON = type !== 'coach';
   const system = isJSON
