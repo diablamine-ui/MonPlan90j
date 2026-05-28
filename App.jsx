@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useState, useEffect, useRef } from "react";
 
 // ══════════════════════════════════════════════════════════════
 // CONFIG
@@ -1997,7 +1996,7 @@ export default function App(){
   if(screen==="landing")return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Jost',sans-serif",overflowX:"hidden"}}>
       <link rel="stylesheet" href={FONT}/>
-      <script src={SHEETJS_URL}/>
+      
       <script defer data-domain="monplan90.vercel.app" src="https://plausible.io/js/script.js"/>
       <meta name="theme-color" content="#0A0A0A"/>
       <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -2833,3 +2832,5 @@ export default function App(){
 
   return null;
 }
+
+export default App;
