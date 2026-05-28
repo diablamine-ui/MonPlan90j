@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import ReactDOM from 'react-dom/client';
+import { useState, useEffect, useRef } from "react";
 
 // ══════════════════════════════════════════════════════════════
 // CONFIG
@@ -566,29 +565,19 @@ Français direct. Aucun texte hors du JSON.`;
 
 function buildPromptWeeks(answers, nom_guerre, batch) {
   const a = flatAnswers(answers);
-  const g = id => a[id] || "Non renseigné";
+  const g = id => a[id] || "";
   const isB1 = batch === 1;
   const start = isB1 ? 1 : 7, end = isB1 ? 6 : 12;
-  const phases = isB1 ? "S1-4=ÉVEIL, S5-6=CONSTRUCTION" : "S7-8=CONSTRUCTION, S9-12=RÉCOLTE";
-  const roles = Object.entries(WEEK_ROLES).filter(([k])=>+k>=start&&+k<=end).map(([k,v])=>`S${k}=${v}`).join(", ");
   const domaine = answers.q_domaine_principal || "";
-  return `Plan 90j semaines ${start}-${end} pour ${g('q_profil')}. Domaine: ${domaine}. Nom: ${nom_guerre}
-Objectif: ${g('q_objectif')} | Temps: ${g('q_heures')} | Moment: ${g('q_moment').split('(')[0].trim()}
-Comportement à transformer: ${g('q_adaptive')} | Moment de fuite: ${g('q_moment_fuite')}
-Rôles: ${roles}
-
-RÈGLE PROGRESSION OBLIGATOIRE — NE JAMAIS VIOLER :
-- S1-S2 : Explorer, préparer, poser les bases. JAMAIS de résultat attendu.
-- S3-S4 : Tester, expérimenter, premiers contacts. Pas encore de récolte.
-- S5-S6 : Premiers vrais résultats possibles.
-- S7-S9 : Consolider, accélérer.
-- S10-S12 : Récolter, ancrer, projeter.
-Ne jamais compresser un processus multi-semaines. Si l'objectif implique des revenus, les premiers encaissements arrivent au plus tôt en S5.
-
-RÈGLE ACTIONS : max 90 chars. QUOI + QUAND (heure précise) + DURÉE. Toutes liées au domaine ${domaine}.
-JSON valide sans backtick :
-{"semaines":[{"s":${start},"ph":"ÉVEIL","role":"Réduction friction","t":"titre 4 mots","o":"objectif réaliste pour cette semaine","a":["Lundi soir 20h — 45min : action précise","Mercredi soir 20h — 30min : action précise","Vendredi soir 20h — 30min : action précise"],"m":"métrique observable","r":"risque concret","v":"victoire atteignable cette semaine"}]}
-${phases}. Semaines ${start}-${end} SEULEMENT. Intensité croissante. Français.`;
+  const moment = (g('q_moment')||g('q_rythme')||'soir').split('(')[0].trim();
+  const heures = g('q_heures')||g('q_rythme')||'30min';
+  const nb = end - start + 1;
+  return `Génère ${nb} semaines (S${start} à S${end}) pour ce plan 90j. JSON uniquement, commence par {.
+Profil: ${g('q_profil')}. Domaine: ${domaine}. Nom: ${nom_guerre}.
+Objectif: ${g('q_objectif')||g('q_frustration')||'transformation'}. Temps/jour: ${heures} le ${moment}.
+${isB1?'S1-4=EVEIL(bases), S5-6=CONSTRUCTION':'S7-8=CONSTRUCTION, S9-12=RECOLTE'}
+Format: {"semaines":[{"s":${start},"ph":"EVEIL","role":"string","t":"4 mots","o":"objectif","a":["action 1","action 2","action 3"],"m":"metrique","r":"risque","v":"victoire"},...]}
+Exactement ${nb} objets. Français.`;
 }
 
 function buildPromptCoach(plan, plan2, weeks, dailyLogs, question, history) {
@@ -649,13 +638,14 @@ ${hist}
 Question : ${question}
 
 RÈGLES ABSOLUES :
+— Tu es interactif — réponds à TOUTE question, même générale sur ton rôle
+— Si on te demande qui tu es : "Je suis ton coach IA — je connais ton profil, tes patterns et ton plan. Pose-moi n'importe quelle question sur ta progression ou ton plan."
 — Jamais "crois en toi" / "tu peux le faire" / encouragements génériques
-— Commence toujours par nommer ce que tu OBSERVES dans les données
-— Si tu vois un pattern → nomme-le directement, sans diplomatie excessive
-— Termine toujours par UNE action concrète avec heure et durée
-— Ton : direct, humain, stratégique — pas thérapeute, pas robot
-— 3-4 phrases maximum
-— Si aucun log disponible : basé-toi sur le profil psychologique uniquement`;
+— Si données disponibles : commence par nommer ce que tu OBSERVES
+— Si pattern détecté → nomme-le directement
+— Termine par UNE action concrète avec heure et durée
+— Ton : direct, humain, stratégique
+— 3-5 phrases maximum`;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1346,10 +1336,10 @@ function CoachChat({plan,plan2,weeks,dailyLogs}){
     if(!input.trim()||loading)return;
     const q=input.trim();setInput("");setMsgs(m=>[...m,{role:"user",content:q}]);setLoading(true);
     try{
-      const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt:buildPromptCoach(plan,plan2,weeks,dailyLogs,q,msgs),maxTokens:500,type:"coach"})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:buildPromptCoach(plan,plan2,weeks,dailyLogs,q,msgs)}]})});
       const data=await res.json();
-      setMsgs(m=>[...m,{role:"assistant",content:typeof data.result==="string"?data.result:data.result?.text||data.result?.response||"Erreur."}]);
+      setMsgs(m=>[...m,{role:"assistant",content:data.content?.find(b=>b.type==="text")?.text||"Erreur."}]);
     }catch(e){setMsgs(m=>[...m,{role:"assistant",content:"Erreur de connexion."}]);}
     finally{setLoading(false);}
   };
@@ -1774,13 +1764,22 @@ export default function App(){
     setScreen("loading");setLoadStep(0);
     const timers=LOAD_STEPS.map((_,i)=>setTimeout(()=>setLoadStep(i),i*4200));
     const call=async(prompt,max)=>{
-      const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt,maxTokens:max,type:"plan"})});
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:max,
+          system:"Tu es un coach comportemental expert ET un générateur de JSON strict. RÈGLE ABSOLUE : ta réponse commence IMMÉDIATEMENT par { et se termine par }. Zéro texte avant. Zéro backtick. Uniquement du JSON valide. Pour l'autosuggestion : phrase percutante 15-25 mots, présent, 1ère personne, opposé EXACT de la phrase négative avec les mots précis du profil. Pour le message_final : 6-8 phrases émotionnellement puissantes qui font vibrer — nomme la peur, le désir, le modèle, l'engagement. Jamais générique.",
+          messages:[{role:"user",content:prompt+"\n\nRAPPEL FINAL : Commence ta réponse IMMÉDIATEMENT par { sans aucun texte avant."}]
+        })});
       if(!res.ok){const d=await res.json();throw new Error(d.error?.message||`Erreur API ${res.status}`);}
       const data=await res.json();
-      if(data.error)throw new Error(data.error);
-      if(!data.result)throw new Error("Réponse vide du serveur");
-      return data.result;
+      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      const parsed=repairJSON(raw);
+      if(!parsed){
+        const preview=raw.slice(0,200).replace(/\n/g," ");
+        throw new Error(`JSON invalide — Début reçu : "${preview}"`);
+      }
+      return parsed;
     };
     try{
       // Appel 1 — identité + diagnostic + scorecard
@@ -1806,8 +1805,12 @@ export default function App(){
 
     const callBatch=async(batch, attempt=1)=>{
       try{
-        const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({prompt:buildPromptWeeks(answers,ng,batch),maxTokens:3000,type:"weeks"})});
+        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"claude-sonnet-4-20250514",max_tokens:3000,
+            system:"Tu es un générateur de JSON strict. RÈGLE ABSOLUE : ta réponse commence IMMÉDIATEMENT par { et se termine par }. Zéro texte avant. Zéro backtick. Uniquement du JSON valide et complet.",
+            messages:[{role:"user",content:buildPromptWeeks(answers,ng,batch)+"\n\nRAPPEL ABSOLU : commence par { immédiatement."}]
+          })});
         if(!res.ok)throw new Error(`HTTP ${res.status}`);
         const data=await res.json();
         const raw=data.content?.find(b=>b.type==="text")?.text||"";
@@ -1997,7 +2000,7 @@ export default function App(){
   if(screen==="landing")return(
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'Jost',sans-serif",overflowX:"hidden"}}>
       <link rel="stylesheet" href={FONT}/>
-      
+      <script src={SHEETJS_URL}/>
       <script defer data-domain="monplan90.vercel.app" src="https://plausible.io/js/script.js"/>
       <meta name="theme-color" content="#0A0A0A"/>
       <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -2833,9 +2836,6 @@ export default function App(){
 
   return null;
 }
-
-
-
 
 // Hide loader when React mounts
 const hideLoader = () => {
