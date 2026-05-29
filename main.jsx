@@ -564,21 +564,17 @@ Génère ce JSON valide EXACTEMENT — sans texte avant ni après, sans backtick
 Français direct. Aucun texte hors du JSON.`;
 }
 
-function buildPromptWeeks(answers, nom_guerre, batch) {
+function buildPromptWeeks(answers, nom_guerre) {
   const a = flatAnswers(answers);
   const g = id => a[id] || "";
-  const isB1 = batch === 1;
-  const start = isB1 ? 1 : 7, end = isB1 ? 6 : 12;
   const domaine = answers.q_domaine_principal || "";
   const moment = (g('q_moment')||g('q_rythme')||'soir').split('(')[0].trim();
   const heures = g('q_heures')||g('q_rythme')||'30min';
-  const nb = end - start + 1;
-  return `Génère ${nb} semaines (S${start} à S${end}) pour ce plan 90j. JSON uniquement, commence par {.
-Profil: ${g('q_profil')}. Domaine: ${domaine}. Nom: ${nom_guerre}.
-Objectif: ${g('q_objectif')||g('q_frustration')||'transformation'}. Temps/jour: ${heures} le ${moment}.
-${isB1?'S1-4=EVEIL(bases), S5-6=CONSTRUCTION':'S7-8=CONSTRUCTION, S9-12=RECOLTE'}
-Format: {"semaines":[{"s":${start},"ph":"EVEIL","role":"string","t":"4 mots","o":"objectif","a":["action 1","action 2","action 3"],"m":"metrique","r":"risque","v":"victoire"},...]}
-Exactement ${nb} objets. Français.`;
+  return `Plan 90j pour ${g('q_profil')||nom_guerre}. Domaine: ${domaine}. Objectif: ${g('q_objectif')||g('q_frustration')||'transformation'}. Temps: ${heures} le ${moment}.
+Génère 12 semaines. S1-4=EVEIL, S5-8=CONSTRUCTION, S9-12=RECOLTE.
+JSON uniquement commence par {:
+{"semaines":[{"s":1,"ph":"EVEIL","role":"string","t":"titre court","o":"objectif semaine","a":["action concrète 1","action 2","action 3"],"m":"metrique","r":"risque","v":"victoire"},{"s":2,...},{"s":3,...},{"s":4,...},{"s":5,"ph":"CONSTRUCTION",...},{"s":6,...},{"s":7,...},{"s":8,...},{"s":9,"ph":"RECOLTE",...},{"s":10,...},{"s":11,...},{"s":12,...}]}
+Exactement 12 objets. Actions liées à ${domaine}. Français court.`;
 }
 
 function buildPromptCoach(plan, plan2, weeks, dailyLogs, question, history) {
@@ -1794,49 +1790,29 @@ export default function App(){
   const generateWeeks=async(p1)=>{
     if(weeks||weeksLoading)return;setWeeksLoading(true);
     const ng=p1?.nom_guerre||"";
+    const norm=w=>({semaine:w.semaine??w.s,phase:w.phase??w.ph,role:w.role||WEEK_ROLES[w.semaine??w.s]||"",titre:w.titre??w.t,objectif:w.objectif??w.o,actions:w.actions??w.a??[],metrique:w.metrique??w.m,risque:w.risque??w.r,victoire:w.victoire??w.v});
 
-    const callBatch=async(batch, attempt=1)=>{
+    const tryLoad=async(attempt=1)=>{
       try{
         const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({prompt:buildPromptWeeks(answers,ng,batch),maxTokens:3000,type:"weeks"})});
+          body:JSON.stringify({prompt:buildPromptWeeks(answers,ng),maxTokens:4000,type:"weeks"})});
         if(!res.ok)throw new Error(`HTTP ${res.status}`);
         const data=await res.json();
-        const raw=data.content?.find(b=>b.type==="text")?.text||"";
-        const parsed=repairJSON(raw);
+        if(data.error)throw new Error(data.error);
+        const parsed=data.result;
         if(!parsed||(!parsed.semaines&&!parsed.plan_semaines)){
-          if(attempt<3)return callBatch(batch,attempt+1);
-          throw new Error("JSON semaines invalide après "+attempt+" tentatives");
+          if(attempt<3){await new Promise(r=>setTimeout(r,2000*attempt));return tryLoad(attempt+1);}
+          throw new Error("Semaines invalides");
         }
-        return parsed.semaines||parsed.plan_semaines||[];
-      }catch(e){
-        if(attempt<3){
-          await new Promise(r=>setTimeout(r,1500*attempt));
-          return callBatch(batch,attempt+1);
-        }
-        throw e;
-      }
-    };
-
-    try{
-      // Essai parallèle d'abord
-      const[b1,b2]=await Promise.all([callBatch(1),callBatch(2)]);
-      const norm=w=>({semaine:w.semaine??w.s,phase:w.phase??w.ph,role:w.role||WEEK_ROLES[w.semaine??w.s]||"",titre:w.titre??w.t,objectif:w.objectif??w.o,actions:w.actions??w.a??[],metrique:w.metrique??w.m,risque:w.risque??w.r,victoire:w.victoire??w.v});
-      const all=[...b1,...b2].map(norm).filter(w=>w.semaine).sort((a,b)=>a.semaine-b.semaine);
-      setWeeks(all.length>0?all:[]);
-    }catch(e){
-      // Fallback séquentiel
-      try{
-        const b1=await callBatch(1,1);
-        const b2=await callBatch(2,1);
-        const norm=w=>({semaine:w.semaine??w.s,phase:w.phase??w.ph,role:w.role||WEEK_ROLES[w.semaine??w.s]||"",titre:w.titre??w.t,objectif:w.objectif??w.o,actions:w.actions??w.a??[],metrique:w.metrique??w.m,risque:w.risque??w.r,victoire:w.victoire??w.v});
-        const all=[...b1,...b2].map(norm).filter(w=>w.semaine).sort((a,b)=>a.semaine-b.semaine);
+        const all=(parsed.semaines||parsed.plan_semaines||[]).map(norm).filter(w=>w.semaine).sort((a,b)=>a.semaine-b.semaine);
         setWeeks(all.length>0?all:[]);
-      }catch(e2){
-        console.error("Semaines échec total:",e2);
+      }catch(e){
+        if(attempt<3){await new Promise(r=>setTimeout(r,2000*attempt));return tryLoad(attempt+1);}
+        console.error("Semaines échec:",e);
         setWeeks([]);
-      }
-    }
-    finally{setWeeksLoading(false);}
+      }finally{if(attempt>=3||true)setWeeksLoading(false);}
+    };
+    tryLoad();
   };
 
   const toggleCheck=(k,v)=>setChecks(p=>({...p,[k]:v}));
