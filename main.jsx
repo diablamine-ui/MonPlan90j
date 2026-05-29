@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-DOM from 'react-dom/client';
+import ReactDOM from 'react-dom/client';
 
 // ══════════════════════════════════════════════════════════════
 // CONFIG
@@ -2838,16 +2838,17 @@ export default function App(){
   return null;
 }
 
-// Hide loader when React mounts
-const hideLoader = () => {
-  const loader = document.getElementById('loader')
-  if (loader) {
-    loader.style.opacity = '0'
-    loader.style.transition = 'opacity 0.4s ease'
-    setTimeout(() => loader.remove(), 400)
-  }
-}
 
-const root = ReactDOM.createRoot(document.getElementById('root'))
-root.render(<App />)
-setTimeout(hideLoader, 100)
+// ── Mount ──
+const hideLoader = () => {
+  const loader = document.getElementById('loader');
+  if (loader) {
+    loader.style.opacity = '0';
+    loader.style.transition = 'opacity 0.4s ease';
+    setTimeout(() => loader.remove(), 400);
+  }
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(React.createElement(App));
+setTimeout(hideLoader, 100);
