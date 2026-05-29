@@ -2839,10 +2839,16 @@ export default function App(){
 }
 
 
+// ── Mount ──
 const hideLoader = () => {
-  const l = document.getElementById('loader');
-  if (l) { l.style.opacity='0'; l.style.transition='opacity 0.4s'; setTimeout(()=>l.remove(),400); }
+  const loader = document.getElementById('loader');
+  if (loader) {
+    loader.style.opacity = '0';
+    loader.style.transition = 'opacity 0.4s ease';
+    setTimeout(() => loader.remove(), 400);
+  }
 };
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
 setTimeout(hideLoader, 100);
