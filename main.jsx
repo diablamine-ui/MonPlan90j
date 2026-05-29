@@ -1337,10 +1337,10 @@ function CoachChat({plan,plan2,weeks,dailyLogs}){
     if(!input.trim()||loading)return;
     const q=input.trim();setInput("");setMsgs(m=>[...m,{role:"user",content:q}]);setLoading(true);
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,messages:[{role:"user",content:buildPromptCoach(plan,plan2,weeks,dailyLogs,q,msgs)}]})});
+      const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({prompt:buildPromptCoach(plan,plan2,weeks,dailyLogs,q,msgs),maxTokens:500,type:"coach"})});
       const data=await res.json();
-      setMsgs(m=>[...m,{role:"assistant",content:data.content?.find(b=>b.type==="text")?.text||"Erreur."}]);
+      setMsgs(m=>[...m,{role:"assistant",content:typeof data.result==="string"?data.result:data.result?.text||"Erreur."}]);
     }catch(e){setMsgs(m=>[...m,{role:"assistant",content:"Erreur de connexion."}]);}
     finally{setLoading(false);}
   };
@@ -1765,22 +1765,13 @@ export default function App(){
     setScreen("loading");setLoadStep(0);
     const timers=LOAD_STEPS.map((_,i)=>setTimeout(()=>setLoadStep(i),i*4200));
     const call=async(prompt,max)=>{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:max,
-          system:"Tu es un coach comportemental expert ET un générateur de JSON strict. RÈGLE ABSOLUE : ta réponse commence IMMÉDIATEMENT par { et se termine par }. Zéro texte avant. Zéro backtick. Uniquement du JSON valide. Pour l'autosuggestion : phrase percutante 15-25 mots, présent, 1ère personne, opposé EXACT de la phrase négative avec les mots précis du profil. Pour le message_final : 6-8 phrases émotionnellement puissantes qui font vibrer — nomme la peur, le désir, le modèle, l'engagement. Jamais générique.",
-          messages:[{role:"user",content:prompt+"\n\nRAPPEL FINAL : Commence ta réponse IMMÉDIATEMENT par { sans aucun texte avant."}]
-        })});
+      const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({prompt,maxTokens:max,type:"plan"})});
       if(!res.ok){const d=await res.json();throw new Error(d.error?.message||`Erreur API ${res.status}`);}
       const data=await res.json();
-      const raw=data.content?.find(b=>b.type==="text")?.text||"";
-      const parsed=repairJSON(raw);
-      if(!parsed){
-        const preview=raw.slice(0,200).replace(/\n/g," ");
-        throw new Error(`JSON invalide — Début reçu : "${preview}"`);
-      }
-      return parsed;
+      if(data.error)throw new Error(data.error);
+      if(!data.result)throw new Error("Réponse vide");
+      return data.result;
     };
     try{
       // Appel 1 — identité + diagnostic + scorecard
@@ -1806,12 +1797,8 @@ export default function App(){
 
     const callBatch=async(batch, attempt=1)=>{
       try{
-        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({
-            model:"claude-sonnet-4-20250514",max_tokens:3000,
-            system:"Tu es un générateur de JSON strict. RÈGLE ABSOLUE : ta réponse commence IMMÉDIATEMENT par { et se termine par }. Zéro texte avant. Zéro backtick. Uniquement du JSON valide et complet.",
-            messages:[{role:"user",content:buildPromptWeeks(answers,ng,batch)+"\n\nRAPPEL ABSOLU : commence par { immédiatement."}]
-          })});
+        const res=await fetch("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({prompt:buildPromptWeeks(answers,ng,batch),maxTokens:3000,type:"weeks"})});
         if(!res.ok)throw new Error(`HTTP ${res.status}`);
         const data=await res.json();
         const raw=data.content?.find(b=>b.type==="text")?.text||"";
@@ -2839,16 +2826,10 @@ export default function App(){
 }
 
 
-// ── Mount ──
 const hideLoader = () => {
-  const loader = document.getElementById('loader');
-  if (loader) {
-    loader.style.opacity = '0';
-    loader.style.transition = 'opacity 0.4s ease';
-    setTimeout(() => loader.remove(), 400);
-  }
+  const l = document.getElementById('loader');
+  if (l) { l.style.opacity='0'; l.style.transition='opacity 0.4s'; setTimeout(()=>l.remove(),400); }
 };
-
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(App));
 setTimeout(hideLoader, 100);
